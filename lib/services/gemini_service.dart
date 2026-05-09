@@ -3,162 +3,138 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:google_generative_ai/google_generative_ai.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'database_providers.dart';
 import 'package:intl/intl.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 
-// ─── Daily cache helpers ─────────────────────────────────────────────────────
+// --- HELPER LOGIC: CACHING & FALLBACKS ---
 
-String _todayString() {
+String _getTodayKey() {
   final now = DateTime.now();
-  return "${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}";
+  return "${now.year}-${now.month}-${now.day}";
 }
 
-Future<String> _dailyCachedFetch({
+Future<String> _fetchWithFallback({
   required String cacheKey,
-  required Future<String> Function() fetchFn,
+  required String fallback,
+  required Future<String> Function() apiCall,
 }) async {
   final prefs = await SharedPreferences.getInstance();
-  final lastFetchedDate = prefs.getString('${cacheKey}_date') ?? '';
-  final today = _todayString();
+  final today = _getTodayKey();
+  
+  final lastDate = prefs.getString('${cacheKey}_date') ?? '';
+  final lastData = prefs.getString('${cacheKey}_text');
 
-  // If already fetched today, return cached text (or fall through if missing)
-  if (lastFetchedDate == today) {
-    final cached = prefs.getString('${cacheKey}_text');
-    if (cached != null) return cached;
+  if (lastDate == today && lastData != null) {
+    return lastData; // Return today's cached success immediately
   }
 
-  // Fetch fresh data
-  final data = await fetchFn();
-
-  // Persist both the result and today’s date
-  await prefs.setString('${cacheKey}_date', today);
-  await prefs.setString('${cacheKey}_text', data);
-  return data;
+  try {
+    final freshData = await apiCall();
+    
+    // Save successful API fetch
+    await prefs.setString('${cacheKey}_date', today);
+    await prefs.setString('${cacheKey}_text', freshData);
+    return freshData;
+  } catch (e) {
+    // Return yesterday's data, or the hardcoded fallback if memory is empty
+    return lastData ?? fallback;
+  }
 }
 
-// ─── 1. Dynamic Quote Provider ────────────────────────────────────────────
+// --- GEMINI API PROVIDERS ---
 
 final dailyQuoteProvider = FutureProvider.autoDispose<String>((ref) async {
-  return _dailyCachedFetch(
-    cacheKey: 'daily_quote',
-    fetchFn: () async {
+  return _fetchWithFallback(
+    cacheKey: 'quote',
+    fallback: '"Action is the foundational key to all success." - Pablo Picasso',
+    apiCall: () async {
       final apiKey = dotenv.env['GEMINI_API_KEY'] ?? '';
+      if (apiKey.isEmpty) throw Exception('API Key missing');
 
-      if (apiKey.isEmpty) {
-        print("🚨 GEMINI ERROR: API Key is empty! Check your .env file and main.dart");
-        return '"Action is the foundational key to all success." - Pablo Picasso';
+      final model = GenerativeModel(
+        model: 'gemini-2.5-flash', 
+        apiKey: apiKey,
+        generationConfig: GenerationConfig(temperature: 0.9),
+      );
+
+      final topics = ['discipline', 'resilience', 'grit', 'focus'];
+      final topic = topics[Random().nextInt(topics.length)];
+      final response = await model.generateContent([
+        Content.text('Provide one profound quote about $topic from a world leader. Format: "Quote" - Author.')
+      ]);
+      
+      final resultText = response.text?.trim();
+      if (resultText == null || resultText.isEmpty) {
+        throw Exception('Empty Response');
       }
-
-      try {
-        print("🚀 Firing Gemini Quote API...");
-        final model = GenerativeModel(
-          model: 'gemini-2.5-flash',
-          apiKey: apiKey,
-          generationConfig: GenerationConfig(temperature: 0.95),
-        );
-
-        final topics = ['discipline', 'extreme focus', 'resilience', 'time management', 'innovation'];
-        final randomTopic = topics[Random().nextInt(topics.length)];
-
-        final prompt = 'Provide one profound, hard-hitting quote about $randomTopic from a world-class leader. Format: "Quote" - Author.';
-
-        final response = await model.generateContent([Content.text(prompt)]);
-        print("✅ Gemini Quote Success!");
-        return response.text?.trim() ?? '"Done is better than perfect." - Sheryl Sandberg';
-      } catch (e) {
-        print("❌ GEMINI QUOTE CRASH: $e");
-        return '"Continuous improvement is better than delayed perfection." - Mark Twain';
-      }
+      return resultText;
     },
   );
 });
-
-// ─── 2. THE KNOWLEDGE BOOSTER ─────────────────────────────────────────────
 
 final dailyQuestionProvider = FutureProvider.autoDispose<String>((ref) async {
-  return _dailyCachedFetch(
-    cacheKey: 'daily_question',
-    fetchFn: () async {
-      final userProfile = ref.watch(userProfileProvider).value;
-
-      List<String> categories = ['Software Engineering'];
-      if (userProfile != null && userProfile['categories'] != null) {
-        categories = List<String>.from(userProfile['categories']);
-      }
-
+  return _fetchWithFallback(
+    cacheKey: 'knowledge',
+    fallback: "C++ Tip: Use 'nullptr' instead of 'NULL' for type safety in modern code.",
+    apiCall: () async {
       final apiKey = dotenv.env['GEMINI_API_KEY'] ?? '';
-      if (apiKey.isEmpty) return "Tip: Use 'Leverage' instead of 'Use' in meetings.";
+      if (apiKey.isEmpty) throw Exception('API Key missing');
 
-      try {
-        print("🚀 Firing Gemini Knowledge API...");
-        final model = GenerativeModel(
-          model: 'gemini-2.5-flash',
-          apiKey: apiKey,
-          generationConfig: GenerationConfig(temperature: 0.9),
-        );
+      final model = GenerativeModel(
+        model: 'gemini-2.5-flash',
+        apiKey: apiKey,
+        generationConfig: GenerationConfig(temperature: 0.95),
+      );
 
-        final concepts = ['Caching', 'Load Balancing', 'Microservices', 'Database Indexing'];
-        final randomConcept = concepts[Random().nextInt(concepts.length)];
-        final isVocab = Random().nextBool();
+      final isVocab = Random().nextBool();
+      String prompt = isVocab 
+        ? 'Provide one rare, C2-level vocabulary word for engineering (like "Idempotent"). Word, meaning, and a tech sentence.'
+        : 'Provide one "Deep Dive" fact about C/C++ memory/pointers (like struct padding or int to float* casting). 2 lines of code + 1 sentence explanation.';
 
-        String prompt;
-        if (isVocab) {
-          prompt = 'Provide ONE highly advanced, C2-level vocabulary word used in corporate engineering. Provide the word, meaning, and a 1-sentence example. No greetings.';
-        } else {
-          prompt = 'Explain the system design concept of "$randomConcept" for a student focused on ${categories.join(', ')} in strictly 2-3 sentences. No greetings.';
-        }
-
-        final response = await model.generateContent([Content.text(prompt)]);
-        print("✅ Gemini Knowledge Success!");
-        return response.text?.trim() ?? "Architecture Tip: Microservices allow teams to scale parts of a system independently.";
-      } catch (e) {
-        print("❌ GEMINI KNOWLEDGE CRASH: $e");
-        return "Vocabulary: 'Orthogonal' - Statistically independent. Example: The UI changes are orthogonal to the database schema.";
+      final response = await model.generateContent([Content.text(prompt)]);
+      
+      final resultText = response.text?.trim();
+      if (resultText == null || resultText.isEmpty) {
+        throw Exception('Empty Response');
       }
+      return resultText;
     },
   );
 });
 
-// ─── 3. AI BEHAVIORAL ANALYST (also now cached daily) ─────────────────────
-
 final productivityAnalysisProvider = FutureProvider.autoDispose<String>((ref) async {
-  return _dailyCachedFetch(
-    cacheKey: 'productivity_analysis',
-    fetchFn: () async {
+  return _fetchWithFallback(
+    cacheKey: 'analysis',
+    fallback: "Consistency King - Keep tracking to see your patterns.",
+    apiCall: () async {
       final sessionsAsync = ref.watch(sessionsProvider);
       final apiKey = dotenv.env['GEMINI_API_KEY'] ?? '';
 
-      if (apiKey.isEmpty || !sessionsAsync.hasValue) return "Consistency King - Keep tracking to see patterns.";
-
-      try {
-        final sessions = sessionsAsync.value!;
-        if (sessions.isEmpty) return "Log some sessions to unlock your AI profile!";
-
-        final timeData = sessions.take(10).map((s) {
-          final d = (s.data() as Map<String, dynamic>)['timestamp'] as Timestamp?;
-          if (d == null) return '';
-          return DateFormat('HH:mm').format(d.toDate());
-        }).where((e) => e.isNotEmpty).join(', ');
-
-        if (timeData.isEmpty) return "Keep tracking to see your patterns.";
-
-        print("🚀 Firing Gemini Analyst API...");
-        final model = GenerativeModel(
-          model: 'gemini-2.5-flash',
-          apiKey: apiKey,
-          generationConfig: GenerationConfig(temperature: 0.4),
-        );
-
-        final prompt = 'Analyze these study session times: $timeData. Label the user strictly as "Night Owl", "Early Bird", or "Mid-Day Warrior" and give a short 1-sentence productivity tip. Format: [Label] - [Tip]';
-
-        final response = await model.generateContent([Content.text(prompt)]);
-        print("✅ Gemini Analyst Success!");
-        return response.text?.trim() ?? "Consistent - Your schedule looks balanced.";
-      } catch (e) {
-        print("❌ GEMINI ANALYST CRASH: $e");
-        return "Keep grinding to unlock AI insights.";
+      if (!sessionsAsync.hasValue || sessionsAsync.value!.isEmpty) {
+        return "Log some sessions to unlock your AI profile!";
       }
+
+      final timeData = sessionsAsync.value!.take(10).map((s) {
+        final d = (s.data() as Map<String, dynamic>)['timestamp'] as Timestamp?;
+        return d != null ? DateFormat('HH:mm').format(d.toDate()) : '';
+      }).where((e) => e.isNotEmpty).join(', ');
+
+      final model = GenerativeModel(
+        model: 'gemini-2.5-flash',
+        apiKey: apiKey,
+        generationConfig: GenerationConfig(temperature: 0.4),
+      );
+
+      final response = await model.generateContent([
+        Content.text('Analyze these session times: $timeData. Label as "Night Owl", "Early Bird", or "Mid-Day Warrior" + 1 tip. Format: [Label] - [Tip]')
+      ]);
+      
+      final resultText = response.text?.trim();
+      if (resultText == null || resultText.isEmpty) {
+        throw Exception('Empty Response');
+      }
+      return resultText;
     },
   );
 });
