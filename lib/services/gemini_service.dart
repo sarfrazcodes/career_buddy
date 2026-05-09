@@ -77,7 +77,7 @@ final dailyQuoteProvider = FutureProvider.autoDispose<String>((ref) async {
 final dailyQuestionProvider = FutureProvider.autoDispose<String>((ref) async {
   return _fetchWithFallback(
     cacheKey: 'knowledge',
-    fallback: "C++ Tip: Use 'nullptr' instead of 'NULL' for type safety in modern code.",
+    fallback: "Perspicacious means having a very sharp understanding and the ability to notice things quickly. It is used for intelligent and insightful people who can analyze situations deeply.\nSentence: The perspicacious student solved the complex problem before anyone else in the class",
     apiCall: () async {
       final apiKey = dotenv.env['GEMINI_API_KEY'] ?? '';
       if (apiKey.isEmpty) throw Exception('API Key missing');
