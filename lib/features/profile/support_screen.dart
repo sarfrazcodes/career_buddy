@@ -40,7 +40,7 @@ class SupportScreen extends StatelessWidget {
             const SizedBox(height: 32),
 
             _buildListTile(Icons.email_outlined, 'Email', 'mohdsarfrazsaifi205@gmail.com', () => _launchURL('mailto:mohdsarfrazsaifi205@gmail.com')),
-            _buildListTile(Icons.link_rounded, 'LinkedIn', 'Connect with me', () => _launchURL('https://www.linkedin.com/in/mohd-sarfraz-saifi/')), // Update with your actual LinkedIn handle
+            _buildListTile(Icons.link_rounded, 'LinkedIn', 'Connect with me', () => _launchURL('https://www.linkedin.com/in/sarfrazcodes/')), // Update with your actual LinkedIn handle
             _buildListTile(Icons.privacy_tip_outlined, 'Privacy Policy', 'Data strictly stored securely', () {
               showAboutDialog(
                 context: context,
