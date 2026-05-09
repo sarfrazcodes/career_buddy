@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "513475357438",
+    "project_id": "personalcareertracker",
+    "storage_bucket": "personalcareertracker.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:513475357438:android:202b6f06b986e6716793af",
+        "android_client_info": {
+          "package_name": "com.example.personal_career_tracking"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDtddwYLFelx-QohNhoPDNPO2CBYImji24"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
