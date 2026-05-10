@@ -1032,7 +1032,9 @@ class _DashboardContent extends ConsumerWidget {
                                       ? const Color(0xFF00D4FF)
                                       : const Color(0xFFBB86FC);
 
-                                  return Container(
+                                  return GestureDetector(
+                                    onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const GoalsScreen())),
+                                    child: Container(
                                     margin: const EdgeInsets.only(
                                         bottom: 12),
                                     padding: const EdgeInsets.all(20),
@@ -1152,7 +1154,7 @@ class _DashboardContent extends ConsumerWidget {
                                         ),
                                       ],
                                     ),
-                                  );
+                                  ));
                                 }).toList(),
                               );
                             },

@@ -23,6 +23,8 @@ class _TimerScreenState extends ConsumerState<TimerScreen> {
   // Track last known running state so we only fire notifications on *change*
   bool _wasRunning = false;
 
+  List<String> categories = ['Deep Work', 'Reading', 'Coding'];
+
   @override
   void initState() {
     super.initState();
@@ -212,13 +214,105 @@ class _TimerScreenState extends ConsumerState<TimerScreen> {
     );
   }
 
+  void _showEditCategoriesDialog() {
+    showDialog(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        backgroundColor: const Color(0xFF0F0F22),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(24),
+          side: BorderSide(color: AppTheme.primaryAccent.withAlpha(60), width: 1),
+        ),
+        title: Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: AppTheme.primaryAccent.withAlpha(22),
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(color: AppTheme.primaryAccent.withAlpha(70)),
+              ),
+              child: Icon(Icons.edit_rounded,
+                  color: AppTheme.primaryAccent, size: 18),
+            ),
+            const SizedBox(width: 12),
+            const Text('Edit Categories',
+                style: TextStyle(
+                    color: Colors.white,
+                    fontWeight: FontWeight.w800,
+                    fontSize: 18)),
+          ],
+        ),
+        content: SizedBox(
+          width: double.maxFinite,
+          child: ListView.builder(
+            shrinkWrap: true,
+            itemCount: categories.length,
+            itemBuilder: (context, index) {
+              final category = categories[index];
+              return ListTile(
+                title: Text(category, style: const TextStyle(color: Colors.white)),
+                trailing: IconButton(
+                  icon: Icon(Icons.delete, color: Colors.redAccent),
+                  onPressed: () async {
+                    // Confirm deletion
+                    final confirm = await showDialog<bool>(
+                      context: context,
+                      builder: (confirmContext) => AlertDialog(
+                        backgroundColor: const Color(0xFF0F0F22),
+                        title: Text('Delete "$category"?',
+                            style: const TextStyle(color: Colors.white)),
+                        content: const Text(
+                            'This will delete all goals and sessions for this category. This action cannot be undone.',
+                            style: TextStyle(color: Color(0xFF8888AA))),
+                        actions: [
+                          TextButton(
+                            onPressed: () => Navigator.pop(confirmContext, false),
+                            child: const Text('Cancel',
+                                style: TextStyle(color: Color(0xFF8888AA))),
+                          ),
+                          TextButton(
+                            onPressed: () => Navigator.pop(confirmContext, true),
+                            child: const Text('Delete',
+                                style: TextStyle(color: Colors.redAccent)),
+                          ),
+                        ],
+                      ),
+                    );
+                    if (confirm == true) {
+                      final user = FirebaseAuth.instance.currentUser;
+                      if (user != null) {
+                        await ref
+                            .read(databaseServiceProvider)
+                            .deleteCategory(user.uid, category);
+                        // Refresh categories
+                        setState(() {});
+                        if (dialogContext.mounted) Navigator.pop(dialogContext);
+                      }
+                    }
+                  },
+                ),
+              );
+            },
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext),
+            child: const Text('Close',
+                style: TextStyle(color: Color(0xFF8888AA))),
+          ),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final timerState = ref.watch(timerProvider);
     final timerNotifier = ref.read(timerProvider.notifier);
     final userProfile = ref.watch(userProfileProvider);
 
-    List<String> categories = ['Deep Work', 'Reading', 'Coding'];
     if (userProfile.value != null &&
         userProfile.value!['categories'] != null) {
       categories = List<String>.from(userProfile.value!['categories']);
@@ -426,6 +520,34 @@ class _TimerScreenState extends ConsumerState<TimerScreen> {
                               ))
                                   .toList(),
                             ),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      GestureDetector(
+                        onTap: isRunning ? null : _showEditCategoriesDialog,
+                        child: AnimatedContainer(
+                          duration: const Duration(milliseconds: 200),
+                          width: 48,
+                          height: 48,
+                          decoration: BoxDecoration(
+                            color: isRunning
+                                ? const Color(0xFF0F0F22)
+                                : AppTheme.primaryAccent.withAlpha(22),
+                            borderRadius: BorderRadius.circular(14),
+                            border: Border.all(
+                              color: isRunning
+                                  ? const Color(0xFF2A2A4A)
+                                  : AppTheme.primaryAccent.withAlpha(70),
+                              width: 1,
+                            ),
+                          ),
+                          child: Icon(
+                            Icons.edit_rounded,
+                            color: isRunning
+                                ? const Color(0xFF2A2A4A)
+                                : AppTheme.primaryAccent,
+                            size: 22,
                           ),
                         ),
                       ),

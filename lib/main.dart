@@ -53,8 +53,8 @@ class _CareerTrackerAppState extends ConsumerState<CareerTrackerApp> {
       onActionReceivedMethod: NotificationService.onActionReceivedMethod,
     );
 
-    // 3. Show Boot Notification immediately if permitted
-    AwesomeNotifications().isNotificationAllowed().then((isAllowed) {
+    // 3. Request notification permission on app startup and show the idle notification if allowed
+    NotificationService.requestPermission().then((isAllowed) {
       if (isAllowed) NotificationService.showIdleNotification();
     });
 

@@ -49,6 +49,29 @@ class DatabaseService {
     await _db.collection('users').doc(uid).set({'categories': FieldValue.arrayUnion([newCategory])}, SetOptions(merge: true));
   }
 
+  Future<void> deleteCategory(String uid, String category) async {
+    // 1. Remove category from user's categories array
+    await _db.collection('users').doc(uid).set({'categories': FieldValue.arrayRemove([category])}, SetOptions(merge: true));
+
+    // 2. Delete all goals with this category
+    final goalsQuery = await _db.collection('goals')
+        .where('uid', isEqualTo: uid)
+        .where('category', isEqualTo: category)
+        .get();
+    for (var doc in goalsQuery.docs) {
+      await doc.reference.delete();
+    }
+
+    // 3. Delete all sessions with this category
+    final sessionsQuery = await _db.collection('sessions')
+        .where('uid', isEqualTo: uid)
+        .where('category', isEqualTo: category)
+        .get();
+    for (var doc in sessionsQuery.docs) {
+      await doc.reference.delete();
+    }
+  }
+
   // --- NEW: Add Goal Function ---
   Future<void> addGoal(String uid, String title, String category, double targetHours, DateTime deadline) async {
     await _db.collection('goals').add({

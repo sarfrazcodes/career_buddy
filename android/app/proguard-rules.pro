@@ -1,0 +1,11 @@
+-keep class io.flutter.** { *; }
+-keep interface io.flutter.** { *; }
+-keep class me.carda.awesome_notifications.** { *; }
+-keep interface me.carda.awesome_notifications.** { *; }
+-keep class com.google.android.play.core.** { *; }
+-keep interface com.google.android.play.core.** { *; }
+-keep class io.flutter.embedding.android.FlutterPlayStoreSplitApplication { *; }
+-keep class io.flutter.embedding.engine.deferredcomponents.** { *; }
+-keep interface io.flutter.embedding.engine.deferredcomponents.** { *; }
+-keep class com.google.firebase.** { *; }
+-keep interface com.google.firebase.** { *; }
