@@ -66,45 +66,53 @@ class NotificationService {
 
   // --- TIMER NOTIFICATIONS ---
 
-  static Future<void> showIdleNotification() async {
+  // --- DAILY REMINDER ---
+  static Future<void> scheduleDailyReminder() async {
     try {
+      final String localTimeZone = await AwesomeNotifications().getLocalTimeZoneIdentifier();
       await AwesomeNotifications().createNotification(
         content: NotificationContent(
-          id: 10,
-          channelKey: 'timer_channel',
-          title: 'Ready to Focus?',
-          body: 'Select a category to start tracking.',
-          category: NotificationCategory.Service,
-          notificationLayout: NotificationLayout.Default,
-          locked: true,
+          id: 11, // separate id for daily reminder
+          channelKey: 'reminders_channel',
+          title: 'Daily Check-in',
+          body: 'Time to track your life! 💪',
+          category: NotificationCategory.Alarm,
+          wakeUpScreen: true,
+          criticalAlert: true,
         ),
-        actionButtons: [
-          NotificationActionButton(key: 'START_Deep Work', label: '▶ Deep Work', color: Colors.green),
-          NotificationActionButton(key: 'START_Coding', label: '▶ Coding', color: Colors.blue),
-          NotificationActionButton(key: 'START_Reading', label: '▶ Reading', color: Colors.purple),
-        ],
+        schedule: NotificationCalendar(
+          hour: 18,
+          minute: 0,
+          second: 0,
+          millisecond: 0,
+          repeats: true, // Daily at 18:00
+          allowWhileIdle: true,
+          timeZone: localTimeZone,
+        ),
       );
     } catch (e) {
-      debugPrint("Show Idle Error: $e");
+      debugPrint("Schedule Daily Reminder Error: $e");
     }
   }
 
-  static Future<void> showActiveNotification(String category, String time) async {
+  static Future<void> showActiveNotification(String category, int elapsedSeconds, String timeStr) async {
     try {
       await AwesomeNotifications().createNotification(
         content: NotificationContent(
           id: 10,
           channelKey: 'timer_channel',
           title: '🔴 Tracking: $category',
-          body: 'Time Elapsed: $time',
+          body: 'Session in progress...',
           category: NotificationCategory.Progress,
           notificationLayout: NotificationLayout.Default,
           locked: true,
-          // Added this to prevent a "chirp" every second the timer updates
+          autoDismissible: false,
+          chronometer: Duration(seconds: elapsedSeconds), // Enable live timer visually
           payload: {'type': 'timer'},
         ),
         actionButtons: [
           NotificationActionButton(key: 'STOP_TIMER', label: 'Stop & Save', color: Colors.red),
+          NotificationActionButton(key: 'DISCARD_TIMER', label: 'Discard', color: Colors.grey),
         ],
       );
     } catch (e) {
@@ -120,19 +128,27 @@ class NotificationService {
     required DateTime scheduledTime,
   }) async {
     try {
+      final String localTimeZone = await AwesomeNotifications().getLocalTimeZoneIdentifier();
       await AwesomeNotifications().createNotification(
         content: NotificationContent(
           id: id,
           channelKey: 'reminders_channel',
           title: title,
           body: 'Time to crush your goals! 💪',
-          category: NotificationCategory.Reminder,
+          category: NotificationCategory.Alarm,
           wakeUpScreen: true,
+          criticalAlert: true,
         ),
-        schedule: NotificationCalendar.fromDate(
-          date: scheduledTime,
-          preciseAlarm: false,
+        schedule: NotificationCalendar(
+          year: scheduledTime.year,
+          month: scheduledTime.month,
+          day: scheduledTime.day,
+          hour: scheduledTime.hour,
+          minute: scheduledTime.minute,
+          second: 0,
+          preciseAlarm: true,
           allowWhileIdle: true,
+          timeZone: localTimeZone,
         ),
       );
     } catch (e) {

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import '../../core/theme/app_theme.dart';
 import '../../services/database_providers.dart';
 import '../../services/gemini_service.dart';
@@ -22,6 +23,7 @@ class ProfileScreen extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final profileAsync = ref.watch(userProfileProvider);
+    final sessionsAsync = ref.watch(sessionsProvider);
     final aiInsightsAsync = ref.watch(_manualAiInsightsProvider);
     final hasFetchedAI = ref.watch(_aiInsightsTriggerProvider);
 
@@ -65,8 +67,25 @@ class ProfileScreen extends ConsumerWidget {
           final int streak = data?['streak'] ?? 0;
           final double totalHours =
               (data?['totalHours'] as num?)?.toDouble() ?? 0.0;
-          final double todayHours =
-              (data?['todayHours'] as num?)?.toDouble() ?? 0.0;
+          
+          double todayHours = 0.0;
+          if (sessionsAsync.hasValue) {
+            final now = DateTime.now();
+            final todayStart = DateTime(now.year, now.month, now.day);
+            for (var doc in sessionsAsync.value!) {
+              final d = doc.data() as Map<String, dynamic>;
+              final h = (d['durationSeconds'] ?? 0) / 3600.0;
+              if (d['timestamp'] != null) {
+                final date = (d['timestamp'] as Timestamp).toDate();
+                final sessionDay = DateTime(date.year, date.month, date.day);
+                if (sessionDay.isAtSameMomentAs(todayStart)) {
+                  todayHours += h;
+                }
+              } else {
+                todayHours += h;
+              }
+            }
+          }
 
           final bool hasStreak5 = streak >= 5;
           final bool hasNightOwl =

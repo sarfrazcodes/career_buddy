@@ -37,7 +37,7 @@ class _RemindersScreenState extends ConsumerState<RemindersScreen> {
 
       if (scheduleTime.isAfter(DateTime.now())) {
         await NotificationService.scheduleReminder(
-          id: (title.hashCode ^ hours).remainder(100000).abs(),
+          id: ('$title${targetDate.millisecondsSinceEpoch}$hours').hashCode.remainder(100000).abs(),
           title: hours == 0
               ? '⏰ Deadline: $title'
               : '🔔 Reminder: $title',

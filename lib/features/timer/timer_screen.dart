@@ -23,7 +23,7 @@ class _TimerScreenState extends ConsumerState<TimerScreen> {
   // Track last known running state so we only fire notifications on *change*
   bool _wasRunning = false;
 
-  List<String> categories = ['Deep Work', 'Reading', 'Coding'];
+  List<String> categories = [];
 
   @override
   void initState() {
@@ -31,9 +31,8 @@ class _TimerScreenState extends ConsumerState<TimerScreen> {
     _requestNotificationPermission();
     _registerNotificationListeners();
 
-    // Show idle notification when screen first opens
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      NotificationService.showIdleNotification();
+      NotificationService.scheduleDailyReminder();
     });
   }
 
@@ -81,8 +80,26 @@ class _TimerScreenState extends ConsumerState<TimerScreen> {
             margin: const EdgeInsets.fromLTRB(24, 0, 24, 16),
           ),
         );
-        // Show idle notification after stopping
-        NotificationService.showIdleNotification();
+        // We no longer show the sticky idle notification here.
+      } else if (key == 'DISCARD_TIMER') {
+        timerNotifier.discardTimer();
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: const Row(
+              children: [
+                Icon(Icons.delete_outline_rounded, color: Colors.white, size: 18),
+                SizedBox(width: 10),
+                Text('Session Discarded',
+                    style: TextStyle(
+                        fontWeight: FontWeight.w700, color: Colors.white)),
+              ],
+            ),
+            backgroundColor: AppTheme.error.withAlpha(220),
+            behavior: SnackBarBehavior.floating,
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+            margin: const EdgeInsets.fromLTRB(24, 0, 24, 16),
+          ),
+        );
       } else if (key.startsWith('START_')) {
         final category = key.replaceFirst('START_', '');
         timerNotifier.setCategory(category);
@@ -313,9 +330,22 @@ class _TimerScreenState extends ConsumerState<TimerScreen> {
     final timerNotifier = ref.read(timerProvider.notifier);
     final userProfile = ref.watch(userProfileProvider);
 
+    bool hasCustomCategories = false;
     if (userProfile.value != null &&
         userProfile.value!['categories'] != null) {
-      categories = List<String>.from(userProfile.value!['categories']);
+      final dbCats = List<String>.from(userProfile.value!['categories']);
+      if (dbCats.isNotEmpty) {
+        categories = dbCats;
+        hasCustomCategories = true;
+
+        if (!categories.contains(timerState.category) && !timerState.isRunning) {
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            if (mounted) {
+              timerNotifier.setCategory(categories.first);
+            }
+          });
+        }
+      }
     }
 
     final bool isRunning = timerState.isRunning;
@@ -332,23 +362,13 @@ class _TimerScreenState extends ConsumerState<TimerScreen> {
         if (isRunning) {
           await NotificationService.showActiveNotification(
             timerState.category,
+            timerState.elapsedSeconds,
             _formatTime(timerState.elapsedSeconds),
           );
         } else {
-          await NotificationService.showIdleNotification();
+          // Remove the active timer notification when paused or stopped
+          await AwesomeNotifications().cancel(10);
         }
-      });
-    }
-
-    // ── Update active notification body every 30 seconds while running ───────
-    // We use the elapsed seconds mod 30 as a cheap throttle
-    if (isRunning && timerState.elapsedSeconds % 30 == 0 && timerState.elapsedSeconds > 0) {
-      WidgetsBinding.instance.addPostFrameCallback((_) async {
-        if (!mounted || !timerState.isRunning) return;
-        await NotificationService.showActiveNotification(
-          timerState.category,
-          _formatTime(timerState.elapsedSeconds),
-        );
       });
     }
 
@@ -524,34 +544,36 @@ class _TimerScreenState extends ConsumerState<TimerScreen> {
                         ),
                       ),
                       const SizedBox(width: 12),
-                      GestureDetector(
-                        onTap: isRunning ? null : _showEditCategoriesDialog,
-                        child: AnimatedContainer(
-                          duration: const Duration(milliseconds: 200),
-                          width: 48,
-                          height: 48,
-                          decoration: BoxDecoration(
-                            color: isRunning
-                                ? const Color(0xFF0F0F22)
-                                : AppTheme.primaryAccent.withAlpha(22),
-                            borderRadius: BorderRadius.circular(14),
-                            border: Border.all(
+                      if (hasCustomCategories)
+                        GestureDetector(
+                          onTap: isRunning ? null : _showEditCategoriesDialog,
+                          child: AnimatedContainer(
+                            duration: const Duration(milliseconds: 200),
+                            width: 48,
+                            height: 48,
+                            decoration: BoxDecoration(
+                              color: isRunning
+                                  ? const Color(0xFF0F0F22)
+                                  : AppTheme.primaryAccent.withAlpha(22),
+                              borderRadius: BorderRadius.circular(14),
+                              border: Border.all(
+                                color: isRunning
+                                    ? const Color(0xFF2A2A4A)
+                                    : AppTheme.primaryAccent.withAlpha(70),
+                                width: 1,
+                              ),
+                            ),
+                            child: Icon(
+                              Icons.edit_rounded,
                               color: isRunning
                                   ? const Color(0xFF2A2A4A)
-                                  : AppTheme.primaryAccent.withAlpha(70),
-                              width: 1,
+                                  : AppTheme.primaryAccent,
+                              size: 22,
                             ),
                           ),
-                          child: Icon(
-                            Icons.edit_rounded,
-                            color: isRunning
-                                ? const Color(0xFF2A2A4A)
-                                : AppTheme.primaryAccent,
-                            size: 22,
-                          ),
                         ),
-                      ),
-                      const SizedBox(width: 12),
+                      if (hasCustomCategories)
+                        const SizedBox(width: 12),
                       GestureDetector(
                         onTap: isRunning ? null : _showAddCategoryDialog,
                         child: AnimatedContainer(
@@ -698,27 +720,89 @@ class _TimerScreenState extends ConsumerState<TimerScreen> {
                       if (hasElapsed) ...[
                         _ControlButton(
                           onTap: () async {
-                            timerNotifier.stopAndSave(ref);
-                            // Cancel the ongoing notification and show idle
-                            await AwesomeNotifications()
-                                .cancel(10); // id 10 = timer notification
-                            await NotificationService.showIdleNotification();
-                            if (mounted) {
+                            final confirm = await showDialog<bool>(
+                              context: context,
+                              builder: (confirmContext) => AlertDialog(
+                                backgroundColor: const Color(0xFF0F0F22),
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(24),
+                                  side: BorderSide(
+                                      color: AppTheme.error.withAlpha(60),
+                                      width: 1),
+                                ),
+                                title: Row(
+                                  children: [
+                                    Container(
+                                      padding: const EdgeInsets.all(8),
+                                      decoration: BoxDecoration(
+                                        color: AppTheme.error.withAlpha(22),
+                                        borderRadius: BorderRadius.circular(10),
+                                        border: Border.all(
+                                            color: AppTheme.error.withAlpha(70)),
+                                      ),
+                                      child: const Icon(
+                                          Icons.warning_amber_rounded,
+                                          color: AppTheme.error,
+                                          size: 18),
+                                    ),
+                                    const SizedBox(width: 12),
+                                    const Text('Discard Session?',
+                                        style: TextStyle(
+                                            color: Colors.white,
+                                            fontWeight: FontWeight.w800,
+                                            fontSize: 18)),
+                                  ],
+                                ),
+                                content: const Text(
+                                  'Are you sure you want to discard this focus session? This time will not be saved.',
+                                  style: TextStyle(
+                                      color: Color(0xFF8888AA), fontSize: 14),
+                                ),
+                                actions: [
+                                  TextButton(
+                                    onPressed: () =>
+                                        Navigator.pop(confirmContext, false),
+                                    child: const Text('Cancel',
+                                        style: TextStyle(
+                                            color: Color(0xFF8888AA))),
+                                  ),
+                                  ElevatedButton(
+                                    style: ElevatedButton.styleFrom(
+                                      backgroundColor: AppTheme.error,
+                                      padding: const EdgeInsets.symmetric(
+                                          horizontal: 20, vertical: 10),
+                                      shape: RoundedRectangleBorder(
+                                          borderRadius: BorderRadius.circular(12)),
+                                    ),
+                                    onPressed: () =>
+                                        Navigator.pop(confirmContext, true),
+                                    child: const Text('Discard',
+                                        style: TextStyle(
+                                            color: Colors.white,
+                                            fontWeight: FontWeight.w700)),
+                                  ),
+                                ],
+                              ),
+                            );
+
+                            if (confirm == true) {
+                              await timerNotifier.discardTimer();
+                              if (!context.mounted) return;
                               ScaffoldMessenger.of(context).showSnackBar(
                                 SnackBar(
                                   content: const Row(
                                     children: [
-                                      Icon(Icons.check_circle_rounded,
+                                      Icon(Icons.delete_outline_rounded,
                                           color: Colors.white, size: 18),
                                       SizedBox(width: 10),
-                                      Text('Session Saved!',
+                                      Text('Session Discarded',
                                           style: TextStyle(
                                               fontWeight: FontWeight.w700,
                                               color: Colors.white)),
                                     ],
                                   ),
                                   backgroundColor:
-                                  const Color(0xFF00E676).withAlpha(220),
+                                      AppTheme.error.withAlpha(220),
                                   behavior: SnackBarBehavior.floating,
                                   shape: RoundedRectangleBorder(
                                       borderRadius: BorderRadius.circular(14)),
@@ -730,9 +814,9 @@ class _TimerScreenState extends ConsumerState<TimerScreen> {
                           },
                           size: 64,
                           color: const Color(0xFF0F0F22),
-                          borderColor: AppTheme.error.withAlpha(80),
-                          child: Icon(Icons.stop_rounded,
-                              color: AppTheme.error, size: 28),
+                          borderColor: Colors.orange.withAlpha(80),
+                          child: const Icon(Icons.delete_outline_rounded,
+                              color: Colors.orangeAccent, size: 28),
                         ),
                         const SizedBox(width: 24),
                       ],
@@ -750,6 +834,45 @@ class _TimerScreenState extends ConsumerState<TimerScreen> {
                           size: 38,
                         ),
                       ),
+                      if (hasElapsed) ...[
+                        const SizedBox(width: 24),
+                        _ControlButton(
+                          onTap: () async {
+                            await timerNotifier.stopAndSave(ref);
+                            // Cancel the ongoing notification
+                            await AwesomeNotifications()
+                                .cancel(10); // id 10 = timer notification
+                            if (!context.mounted) return;
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(
+                                content: const Row(
+                                  children: [
+                                    Icon(Icons.check_circle_rounded,
+                                        color: Colors.white, size: 18),
+                                    SizedBox(width: 10),
+                                    Text('Session Saved!',
+                                        style: TextStyle(
+                                            fontWeight: FontWeight.w700,
+                                            color: Colors.white)),
+                                  ],
+                                ),
+                                backgroundColor:
+                                    const Color(0xFF00E676).withAlpha(220),
+                                behavior: SnackBarBehavior.floating,
+                                shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(14)),
+                                margin: const EdgeInsets.fromLTRB(
+                                    24, 0, 24, 16),
+                              ),
+                            );
+                          },
+                          size: 64,
+                          color: const Color(0xFF0F0F22),
+                          borderColor: AppTheme.error.withAlpha(80),
+                          child: Icon(Icons.stop_rounded,
+                              color: AppTheme.error, size: 28),
+                        ),
+                      ],
                     ],
                   ),
                 ),

@@ -15,6 +15,8 @@ class AnalyticsScreen extends ConsumerStatefulWidget {
 class _AnalyticsScreenState extends ConsumerState<AnalyticsScreen> {
   bool _isWeeklyMode = true;
   String? _selectedGoalId;
+  DateTime _selectedDate = DateTime.now();
+  int _weeklyOffset = 0;
 
   @override
   Widget build(BuildContext context) {
@@ -57,9 +59,42 @@ class _AnalyticsScreenState extends ConsumerState<AnalyticsScreen> {
           SafeArea(
             child: userProfileAsync.when(
               data: (profileData) {
-                final double rawHours =
-                    (profileData?['totalHours'] as num?)?.toDouble() ?? 0.0;
-                final String formattedHours = rawHours.toStringAsFixed(2);
+                final sessions = sessionsAsync.value ?? [];
+                final now = DateTime.now();
+                double heroHours = 0.0;
+                String heroTitle = 'TOTAL TRACKED';
+                String heroSubtitle = 'hours of focused work logged';
+
+                if (_isWeeklyMode) {
+                  final targetWeekEnd = DateTime(now.year, now.month, now.day).subtract(Duration(days: _weeklyOffset * 7));
+                  for (var doc in sessions) {
+                    final data = doc.data() as Map<String, dynamic>;
+                    if (data['timestamp'] == null) continue;
+                    final DateTime date = (data['timestamp'] as Timestamp).toDate();
+                    final double hours = (data['durationSeconds'] ?? 0) / 3600.0;
+                    final int daysAgo = targetWeekEnd.difference(DateTime(date.year, date.month, date.day)).inDays;
+                    if (daysAgo < 7 && daysAgo >= 0) {
+                      heroHours += hours;
+                    }
+                  }
+                  heroTitle = _weeklyOffset == 0 ? 'THIS WEEK TRACKED' : 'WEEK TRACKED (${_weeklyOffset}W AGO)';
+                  heroSubtitle = _weeklyOffset == 0 ? 'hours of focus logged this week' : 'hours of focus logged for this week';
+                } else {
+                  for (var doc in sessions) {
+                    final data = doc.data() as Map<String, dynamic>;
+                    if (data['timestamp'] == null) continue;
+                    final DateTime date = (data['timestamp'] as Timestamp).toDate();
+                    if (date.day == _selectedDate.day && date.month == _selectedDate.month && date.year == _selectedDate.year) {
+                      final double hours = (data['durationSeconds'] ?? 0) / 3600.0;
+                      heroHours += hours;
+                    }
+                  }
+                  final isToday = _selectedDate.day == now.day && _selectedDate.month == now.month && _selectedDate.year == now.year;
+                  heroTitle = isToday ? 'TODAY TRACKED' : 'DAY TRACKED';
+                  heroSubtitle = 'hours of focus logged for this day';
+                }
+
+                final String formattedHours = heroHours.toStringAsFixed(2);
 
                 return SingleChildScrollView(
                   physics: const BouncingScrollPhysics(),
@@ -146,14 +181,14 @@ class _AnalyticsScreenState extends ConsumerState<AnalyticsScreen> {
                                           borderRadius:
                                           BorderRadius.circular(20),
                                         ),
-                                        child: const Row(
+                                        child: Row(
                                           mainAxisSize: MainAxisSize.min,
                                           children: [
-                                            Icon(Icons.bar_chart_rounded,
+                                            const Icon(Icons.bar_chart_rounded,
                                                 color: Colors.white, size: 12),
-                                            SizedBox(width: 5),
-                                            Text('TOTAL TRACKED',
-                                                style: TextStyle(
+                                            const SizedBox(width: 5),
+                                            Text(heroTitle,
+                                                style: const TextStyle(
                                                     color: Colors.white,
                                                     fontSize: 10,
                                                     fontWeight: FontWeight.w700,
@@ -190,8 +225,8 @@ class _AnalyticsScreenState extends ConsumerState<AnalyticsScreen> {
                                         ],
                                       ),
                                       const SizedBox(height: 4),
-                                      const Text('hours of focused work logged',
-                                          style: TextStyle(
+                                      Text(heroSubtitle,
+                                          style: const TextStyle(
                                               color: Colors.white60,
                                               fontSize: 12)),
                                     ],
@@ -267,101 +302,196 @@ class _AnalyticsScreenState extends ConsumerState<AnalyticsScreen> {
                         ),
                         child: sessionsAsync.when(
                           data: (sessions) {
-                            if (sessions.isEmpty) {
-                              return const SizedBox(
-                                height: 200,
-                                child: Center(
-                                  child: Column(
-                                    mainAxisSize: MainAxisSize.min,
-                                    children: [
-                                      Icon(Icons.bar_chart_outlined,
-                                          color: Color(0xFF2A2A4A), size: 40),
-                                      SizedBox(height: 10),
-                                      Text('No sessions recorded.',
-                                          style: TextStyle(
-                                              color: Color(0xFF5A5A7A))),
-                                    ],
-                                  ),
+                            final now = DateTime.now();
+                            Widget headerControls;
+                            if (!_isWeeklyMode) {
+                              headerControls = Padding(
+                                padding: const EdgeInsets.only(bottom: 16.0),
+                                child: Row(
+                                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                  children: [
+                                    Text(
+                                      _selectedDate.day == now.day && _selectedDate.month == now.month && _selectedDate.year == now.year
+                                          ? 'Today'
+                                          : DateFormat('MMM dd, yyyy').format(_selectedDate),
+                                      style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16),
+                                    ),
+                                    IconButton(
+                                      icon: const Icon(Icons.calendar_month, color: AppTheme.primaryAccent, size: 20),
+                                      onPressed: () async {
+                                        Set<String> validDates = {};
+                                        DateTime latestValidDate = DateTime(2020);
+                                        for (var doc in sessions) {
+                                          final data = doc.data() as Map<String, dynamic>;
+                                          if (data['timestamp'] != null) {
+                                            final date = (data['timestamp'] as Timestamp).toDate();
+                                            validDates.add("${date.year}-${date.month}-${date.day}");
+                                            if (date.isAfter(latestValidDate)) latestValidDate = date;
+                                          }
+                                        }
+                                        
+                                        if (validDates.isEmpty) {
+                                          validDates.add("${now.year}-${now.month}-${now.day}");
+                                          latestValidDate = now;
+                                        }
+
+                                        DateTime initDate = _selectedDate;
+                                        if (!validDates.contains("${initDate.year}-${initDate.month}-${initDate.day}")) {
+                                            initDate = latestValidDate;
+                                        }
+
+                                        final date = await showDatePicker(
+                                          context: context,
+                                          initialDate: initDate,
+                                          firstDate: DateTime(2020),
+                                          lastDate: now,
+                                          selectableDayPredicate: (DateTime day) {
+                                            return validDates.contains("${day.year}-${day.month}-${day.day}");
+                                          },
+                                          builder: (context, child) {
+                                            return Theme(
+                                              data: Theme.of(context).copyWith(
+                                                colorScheme: const ColorScheme.dark(
+                                                  primary: AppTheme.primaryAccent,
+                                                  onPrimary: Colors.white,
+                                                  surface: Color(0xFF0F0F22),
+                                                  onSurface: Colors.white,
+                                                ),
+                                              ),
+                                              child: child!,
+                                            );
+                                          },
+                                        );
+                                        if (date != null) setState(() => _selectedDate = date);
+                                      },
+                                    ),
+                                  ],
+                                ),
+                              );
+                            } else {
+                              headerControls = Padding(
+                                padding: const EdgeInsets.only(bottom: 16.0),
+                                child: Row(
+                                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                  children: [
+                                    IconButton(
+                                      icon: const Icon(Icons.chevron_left, color: AppTheme.primaryAccent),
+                                      onPressed: () {
+                                        final nextOffset = _weeklyOffset + 1;
+                                        final nextTargetWeekEnd = DateTime(now.year, now.month, now.day).subtract(Duration(days: nextOffset * 7));
+                                        bool hasOlderData = sessions.any((doc) {
+                                            final data = doc.data() as Map<String, dynamic>;
+                                            if (data['timestamp'] == null) return false;
+                                            final date = (data['timestamp'] as Timestamp).toDate();
+                                            return date.isBefore(nextTargetWeekEnd.add(const Duration(days: 1)));
+                                        });
+                                        if (hasOlderData) {
+                                          setState(() => _weeklyOffset++);
+                                        } else {
+                                          ScaffoldMessenger.of(context).showSnackBar(
+                                            const SnackBar(content: Text('No data before this week.'), duration: Duration(seconds: 2))
+                                          );
+                                        }
+                                      },
+                                    ),
+                                    Text(
+                                      _weeklyOffset == 0 ? 'This Week' : '$_weeklyOffset Week${_weeklyOffset > 1 ? 's' : ''} Ago',
+                                      style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16),
+                                    ),
+                                    IconButton(
+                                      icon: Icon(Icons.chevron_right, color: _weeklyOffset > 0 ? AppTheme.primaryAccent : Colors.white24),
+                                      onPressed: _weeklyOffset > 0 ? () => setState(() => _weeklyOffset--) : null,
+                                    ),
+                                  ],
                                 ),
                               );
                             }
 
-                            final now = DateTime.now();
+                            if (sessions.isEmpty) {
+                              return Column(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  headerControls,
+                                  const SizedBox(
+                                    height: 150,
+                                    child: Center(
+                                      child: Column(
+                                        mainAxisSize: MainAxisSize.min,
+                                        children: [
+                                          Icon(Icons.bar_chart_outlined, color: Color(0xFF2A2A4A), size: 40),
+                                          SizedBox(height: 10),
+                                          Text('No sessions recorded.', style: TextStyle(color: Color(0xFF5A5A7A))),
+                                        ],
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              );
+                            }
+
                             List<double> chartData = [];
                             List<String> labels = [];
 
                             if (_isWeeklyMode) {
                               chartData = List.filled(7, 0.0);
+                              final targetWeekEnd = DateTime(now.year, now.month, now.day).subtract(Duration(days: _weeklyOffset * 7));
                               for (var doc in sessions) {
-                                final data =
-                                doc.data() as Map<String, dynamic>;
+                                final data = doc.data() as Map<String, dynamic>;
                                 if (data['timestamp'] == null) continue;
-                                final DateTime date =
-                                (data['timestamp'] as Timestamp).toDate();
-                                final double hours =
-                                    (data['durationSeconds'] ?? 0) / 3600.0;
-                                final int daysAgo = DateTime(now.year,
-                                    now.month, now.day)
-                                    .difference(DateTime(
-                                    date.year, date.month, date.day))
-                                    .inDays;
+                                final DateTime date = (data['timestamp'] as Timestamp).toDate();
+                                final double hours = (data['durationSeconds'] ?? 0) / 3600.0;
+                                final int daysAgo = targetWeekEnd.difference(DateTime(date.year, date.month, date.day)).inDays;
                                 if (daysAgo < 7 && daysAgo >= 0) {
                                   chartData[6 - daysAgo] += hours;
                                 }
                               }
-                              labels = List.generate(
-                                  7,
-                                      (i) => DateFormat('EEE').format(
-                                      now.subtract(Duration(days: 6 - i))));
+                              labels = List.generate(7, (i) => DateFormat('EEE').format(targetWeekEnd.subtract(Duration(days: 6 - i))));
                             } else {
                               Map<String, double> todayCategories = {};
                               for (var doc in sessions) {
-                                final data =
-                                doc.data() as Map<String, dynamic>;
+                                final data = doc.data() as Map<String, dynamic>;
                                 if (data['timestamp'] == null) continue;
-                                final DateTime date =
-                                (data['timestamp'] as Timestamp).toDate();
-                                if (date.day == now.day &&
-                                    date.month == now.month &&
-                                    date.year == now.year) {
-                                  final double hours =
-                                      (data['durationSeconds'] ?? 0) / 3600.0;
-                                  final String cat =
-                                      data['category'] ?? 'Other';
-                                  todayCategories[cat] =
-                                      (todayCategories[cat] ?? 0) + hours;
+                                final DateTime date = (data['timestamp'] as Timestamp).toDate();
+                                if (date.day == _selectedDate.day && date.month == _selectedDate.month && date.year == _selectedDate.year) {
+                                  final double hours = (data['durationSeconds'] ?? 0) / 3600.0;
+                                  final String cat = data['category'] ?? 'Other';
+                                  todayCategories[cat] = (todayCategories[cat] ?? 0) + hours;
                                 }
                               }
                               if (todayCategories.isEmpty) {
-                                return const SizedBox(
-                                  height: 200,
-                                  child: Center(
-                                    child: Column(
-                                      mainAxisSize: MainAxisSize.min,
-                                      children: [
-                                        Icon(Icons.today_outlined,
-                                            color: Color(0xFF2A2A4A),
-                                            size: 40),
-                                        SizedBox(height: 10),
-                                        Text('No tracking done today.',
-                                            style: TextStyle(
-                                                color: Color(0xFF5A5A7A))),
-                                      ],
+                                return Column(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    headerControls,
+                                    const SizedBox(
+                                      height: 150,
+                                      child: Center(
+                                        child: Column(
+                                          mainAxisSize: MainAxisSize.min,
+                                          children: [
+                                            Icon(Icons.today_outlined, color: Color(0xFF2A2A4A), size: 40),
+                                            SizedBox(height: 10),
+                                            Text('No tracking done on this date.', style: TextStyle(color: Color(0xFF5A5A7A))),
+                                          ],
+                                        ),
+                                      ),
                                     ),
-                                  ),
+                                  ],
                                 );
                               }
                               labels = todayCategories.keys.toList();
                               chartData = todayCategories.values.toList();
                             }
 
-                            double maxHours = chartData.isNotEmpty
-                                ? chartData.reduce((a, b) => a > b ? a : b)
-                                : 0;
+                            double maxHours = chartData.isNotEmpty ? chartData.reduce((a, b) => a > b ? a : b) : 0;
                             if (maxHours <= 0) maxHours = 1;
 
                             // ── FittedBox chart (replaces horizontal ScrollView) ──
-                            return SizedBox(
+                            return Column(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                headerControls,
+                                SizedBox(
                               height: 200,
                               child: FittedBox(
                                 alignment: Alignment.bottomCenter,
@@ -474,6 +604,8 @@ class _AnalyticsScreenState extends ConsumerState<AnalyticsScreen> {
                                   ),
                                 ),
                               ),
+                                ),
+                              ],
                             );
                           },
                           loading: () => const SizedBox(

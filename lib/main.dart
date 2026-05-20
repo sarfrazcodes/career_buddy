@@ -53,9 +53,9 @@ class _CareerTrackerAppState extends ConsumerState<CareerTrackerApp> {
       onActionReceivedMethod: NotificationService.onActionReceivedMethod,
     );
 
-    // 3. Request notification permission on app startup and show the idle notification if allowed
+    // 3. Request notification permission on app startup and schedule daily reminder if allowed
     NotificationService.requestPermission().then((isAllowed) {
-      if (isAllowed) NotificationService.showIdleNotification();
+      if (isAllowed) NotificationService.scheduleDailyReminder();
     });
 
     // 4. Listen for clicks from the Notification tray
@@ -68,6 +68,8 @@ class _CareerTrackerAppState extends ConsumerState<CareerTrackerApp> {
         timerNotifier.start();
       } else if (action.buttonKeyPressed == 'STOP_TIMER') {
         timerNotifier.stopAndSave(ref);
+      } else if (action.buttonKeyPressed == 'DISCARD_TIMER') {
+        timerNotifier.discardTimer();
       }
     });
   }

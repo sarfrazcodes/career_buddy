@@ -77,7 +77,7 @@ final dailyQuoteProvider = FutureProvider.autoDispose<String>((ref) async {
 final dailyQuestionProvider = FutureProvider.autoDispose<String>((ref) async {
   return _fetchWithFallback(
     cacheKey: 'knowledge',
-    fallback: "Perspicacious means having a very sharp understanding and the ability to notice things quickly. It is used for intelligent and insightful people who can analyze situations deeply.\nSentence: The perspicacious student solved the complex problem before anyone else in the class",
+    fallback: "Perplexity AI is a conversational search engine that answers queries using natural language predictive text. It acts as a powerful alternative to traditional search engines by citing its sources and providing concise summaries.",
     apiCall: () async {
       final apiKey = dotenv.env['GEMINI_API_KEY'] ?? '';
       if (apiKey.isEmpty) throw Exception('API Key missing');
@@ -88,10 +88,10 @@ final dailyQuestionProvider = FutureProvider.autoDispose<String>((ref) async {
         generationConfig: GenerationConfig(temperature: 0.95),
       );
 
-      final isVocab = Random().nextBool();
-      String prompt = isVocab 
-        ? 'Provide one rare, C2-level vocabulary word for engineering (like "Idempotent"). Word, meaning, and a tech sentence.'
-        : 'Provide one "Deep Dive" fact about C/C++ memory/pointers (like struct padding or int to float* casting). 2 lines of code + 1 sentence explanation.';
+      String prompt = 'Provide exactly two things in a very short response:\n'
+          '1. A new AI tool/website. Tell me: What it is, why it is efficient, and if it is free/paid. (1 short sentence)\n'
+          '2. One rare vocabulary word. Format: Word - 1-2 word meaning. 1 short simple sentence.\n'
+          'Keep the entire response extremely brief. DO NOT use markdown, asterisks, or bolding.';
 
       final response = await model.generateContent([Content.text(prompt)]);
       

@@ -501,22 +501,39 @@ class _DashboardContent extends ConsumerWidget {
         child: userProfileAsync.when(
           data: (profileData) {
             final String name     = profileData?['name'] ?? 'User';
-            final double rawToday =
-                (profileData?['todayHours'] as num?)?.toDouble() ?? 0.0;
             final String avatarType = profileData?['avatar'] ?? 'neutral';
 
-            // Compute weekly total & category map from sessions
+            double todayHours = 0.0;
             double weeklyTotal = 0.0;
             String topCategory = 'None';
             Map<String, double> cats = {};
 
             if (sessionsAsync.hasValue) {
+              final now = DateTime.now();
+              final todayStart = DateTime(now.year, now.month, now.day);
+
               for (var doc in sessionsAsync.value!) {
                 final d = doc.data() as Map<String, dynamic>;
                 final h = (d['durationSeconds'] ?? 0) / 3600.0;
                 final c = d['category'] ?? 'General';
                 cats[c] = (cats[c] ?? 0.0) + h;
-                weeklyTotal += h;
+
+                if (d['timestamp'] != null) {
+                  final date = (d['timestamp'] as Timestamp).toDate();
+                  final sessionDay = DateTime(date.year, date.month, date.day);
+
+                  if (sessionDay.isAtSameMomentAs(todayStart)) {
+                    todayHours += h;
+                  }
+
+                  final daysAgo = todayStart.difference(sessionDay).inDays;
+                  if (daysAgo >= 0 && daysAgo < 7) {
+                    weeklyTotal += h;
+                  }
+                } else {
+                  todayHours += h;
+                  weeklyTotal += h;
+                }
               }
               if (cats.isNotEmpty) {
                 topCategory = cats.entries
@@ -791,12 +808,13 @@ class _DashboardContent extends ConsumerWidget {
                                   ]),
                                   const SizedBox(height: 14),
                                   geminiKnowledgeAsync.when(
-                                    data: (k) => Text(k,
+                                    data: (k) => Text(k.replaceAll('*', ''),
                                         style: const TextStyle(
-                                            color: Color(0xFFD0D0F0),
-                                            fontSize: 15,
-                                            height: 1.6,
-                                            letterSpacing: 0.1)),
+                                            color: Color(0xFFE2E2F8),
+                                            fontSize: 14,
+                                            fontWeight: FontWeight.w500,
+                                            height: 1.5,
+                                            letterSpacing: 0.2)),
                                     loading: () => const Center(
                                         child: Padding(
                                           padding: EdgeInsets.symmetric(
@@ -838,7 +856,7 @@ class _DashboardContent extends ConsumerWidget {
                               onGoToAnalytics();
                             },
                             child: Row(children: [
-                              Text('See All',
+                              Text('See Stats',
                                   style: TextStyle(
                                       color: AppTheme.secondaryAccent
                                           .withAlpha(200),
@@ -868,7 +886,7 @@ class _DashboardContent extends ConsumerWidget {
                           // Today → Analytics "Today" sub-tab (index 0)
                           _StatCard(
                             title: 'Today',
-                            value: '${rawToday.toStringAsFixed(2)}h',
+                            value: '${todayHours.toStringAsFixed(2)}h',
                             icon: Icons.timer_outlined,
                             accent: const Color(0xFF00D4FF),
                             onTap: () {
@@ -890,7 +908,7 @@ class _DashboardContent extends ConsumerWidget {
                           ),
                           // Weekly → Analytics "Weekly" sub-tab (index 1)
                           _StatCard(
-                            title: 'Weekly',
+                            title: 'This Week',
                             value:
                             '${weeklyTotal.toStringAsFixed(1)}h',
                             icon: Icons.bar_chart_rounded,

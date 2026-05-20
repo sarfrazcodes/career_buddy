@@ -96,10 +96,15 @@ class DatabaseService {
     int currentStreak = userDoc.data()?['streak'] ?? 0;
     Timestamp? lastSessionTs = userDoc.data()?['lastSessionDate'];
 
+    bool isNewDay = true;
     if (lastSessionTs != null) {
       final lastDate = lastSessionTs.toDate();
       final lastDay = DateTime(lastDate.year, lastDate.month, lastDate.day);
       final difference = today.difference(lastDay).inDays;
+
+      if (difference == 0) {
+        isNewDay = false;
+      }
 
       if (difference == 1) {
         currentStreak += 1;
@@ -115,15 +120,22 @@ class DatabaseService {
       'uid': uid, 'category': category, 'durationSeconds': durationInSeconds, 'timestamp': FieldValue.serverTimestamp(),
     });
 
-    // 2. Update User Stats
-    await userRef.set({
+    final Map<String, dynamic> userUpdates = {
       'totalHours': FieldValue.increment(hours),
-      'todayHours': FieldValue.increment(hours),
       'totalSessions': FieldValue.increment(1),
       'streak': currentStreak,
       'lastSessionDate': FieldValue.serverTimestamp(),
       'categories': FieldValue.arrayUnion([category])
-    }, SetOptions(merge: true));
+    };
+
+    if (isNewDay) {
+      userUpdates['todayHours'] = hours;
+    } else {
+      userUpdates['todayHours'] = FieldValue.increment(hours);
+    }
+
+    // 2. Update User Stats
+    await userRef.set(userUpdates, SetOptions(merge: true));
 
     // 3. --- NEW: Update Goal Progress automatically ---
     final goalsQuery = await _db.collection('goals')
