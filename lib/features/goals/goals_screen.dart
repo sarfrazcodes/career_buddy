@@ -343,9 +343,12 @@ class _GoalsScreenState extends ConsumerState<GoalsScreen>
     final goalsAsync = ref.watch(goalsProvider);
     final userProfile = ref.watch(userProfileProvider);
 
-    List<String> categories = [];
+    List<String> categories = ['dsa', 'development'];
     if (userProfile.value != null && userProfile.value!['categories'] != null) {
-      categories = List<String>.from(userProfile.value!['categories']);
+      final dbCats = List<String>.from(userProfile.value!['categories']);
+      if (dbCats.isNotEmpty) {
+        categories = dbCats;
+      }
     }
 
     return Scaffold(

@@ -23,7 +23,7 @@ class _TimerScreenState extends ConsumerState<TimerScreen> {
   // Track last known running state so we only fire notifications on *change*
   bool _wasRunning = false;
 
-  List<String> categories = [];
+  List<String> categories = ['dsa', 'development'];
 
   @override
   void initState() {

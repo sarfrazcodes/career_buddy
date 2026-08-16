@@ -10,6 +10,7 @@ class FirestoreService {
       'uid': uid,
       'name': name,
       'mobile': mobile,
+      'categories': ['dsa', 'development'],
       'createdAt': FieldValue.serverTimestamp(),
     });
   }
